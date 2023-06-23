@@ -1,14 +1,16 @@
 #include "game.h"
-#include <iostream>
 #include "SDL.h"
+#include <iostream>
 
-Game::Game(std::size_t grid_width, std::size_t grid_height)
-    : snake(grid_width, grid_height),
-      engine(dev()),
+Game::Game(std::size_t grid_width, std::size_t grid_height,
+           std::size_t screen_width, std::size_t screen_height)
+    : _player(1, grid_width, grid_height, screen_width / grid_width,
+              screen_height / grid_height, grid_width * 0.2 / 2,
+              grid_height / 2),
+      engine(dev()), grid_height(grid_height), grid_width(grid_width),
+      screen_width(screen_width), screen_height(screen_height),
       random_w(0, static_cast<int>(grid_width - 1)),
-      random_h(0, static_cast<int>(grid_height - 1)) {
-  PlaceFood();
-}
+      random_h(0, static_cast<int>(grid_height - 1)) {}
 
 void Game::Run(Controller const &controller, Renderer &renderer,
                std::size_t target_frame_duration) {
@@ -18,14 +20,17 @@ void Game::Run(Controller const &controller, Renderer &renderer,
   Uint32 frame_duration;
   int frame_count = 0;
   bool running = true;
+  _enemies.reserve(MAX_ENEMIES);
+  _enemyBullets.reserve(MAX_BULLETS);
+  Load();
 
   while (running) {
     frame_start = SDL_GetTicks();
 
     // Input, Update, Render - the main game loop.
-    controller.HandleInput(running, snake);
+    controller.HandleInput(running, _player);
     Update();
-    renderer.Render(snake, food);
+    renderer.Render(_player, _enemies, _enemyBullets);
 
     frame_end = SDL_GetTicks();
 
@@ -50,38 +55,114 @@ void Game::Run(Controller const &controller, Renderer &renderer,
   }
 }
 
-void Game::PlaceFood() {
-  int x, y;
-  while (true) {
-    x = random_w(engine);
-    y = random_h(engine);
-    // Check that the location is not occupied by a snake item before placing
-    // food.
-    if (!snake.SnakeCell(x, y)) {
-      food.x = x;
-      food.y = y;
-      return;
+void Game::Update() {
+  if (!_player.alive)
+    return;
+
+  _player.Update();
+
+  unsigned int curr_enemy_spawn_time = SDL_GetTicks();
+  if (curr_enemy_spawn_time - last_enemy_spawn_time >= spawn_enemy_cooldown) {
+    SpawnEnemy();
+    last_enemy_spawn_time = curr_enemy_spawn_time;
+  }
+
+  for (auto e : _enemies) {
+    if (e->alive) {
+      for (Bullet &b : _player.bullets) {
+        if (b.alive) {
+          SDL_Rect bulletRect = b.getRect();
+          SDL_Rect enemyRect = e->getRect();
+          if (SDL_HasIntersection(&bulletRect, &enemyRect)) {
+            e->takeDamage();
+            b.alive = false;
+            score++;
+          }
+        }
+      }
+      if (CheckPlayerCollision(e)) {
+        e->takeDamage();
+        if (!_player.shielded) {
+          _player.takeDamage();
+        }
+      } else {
+        e->updatePosition();
+        auto b = SpawnBullet();
+        if (b) {
+          e->fire(b);
+        }
+      }
+    }
+  }
+
+  if (_player.alive) {
+    for (auto b : _enemyBullets) {
+      if (b->alive) {
+        if (CheckPlayerCollision(b)) {
+          b->alive = false;
+          if (!_player.shielded) {
+            _player.takeDamage();
+          }
+        } else {
+          b->updatePosition();
+        }
+      }
     }
   }
 }
 
-void Game::Update() {
-  if (!snake.alive) return;
+bool Game::CheckPlayerCollision(Enemy *e) {
 
-  snake.Update();
-
-  int new_x = static_cast<int>(snake.head_x);
-  int new_y = static_cast<int>(snake.head_y);
-
-  // Check if there's food over here
-  if (food.x == new_x && food.y == new_y) {
-    score++;
-    PlaceFood();
-    // Grow snake and increase speed.
-    snake.GrowBody();
-    snake.speed += 0.02;
+  SDL_Rect playerRect = _player.getRect();
+  if (_player.shielded) {
+    playerRect = _player.getShieldRect();
   }
+  return e->isCollision(playerRect);
+}
+
+bool Game::CheckPlayerCollision(Bullet *b) {
+
+  SDL_Rect playerRect = _player.getRect();
+  if (_player.shielded) {
+    playerRect = _player.getShieldRect();
+  }
+  return b->isCollision(playerRect);
 }
 
 int Game::GetScore() const { return score; }
-int Game::GetSize() const { return snake.size; }
+
+void Game::Load() {
+  int x = grid_width;
+  int y = 0;
+  for (auto i = 0; i < _enemies.capacity(); i++) {
+    _enemies.emplace_back(new Enemy(2, grid_width, grid_height,
+                                    (screen_width / grid_width),
+                                    (screen_height / grid_height), x, y));
+  }
+
+  for (auto i = 0; i < _enemyBullets.capacity(); i++) {
+    _enemyBullets.emplace_back(new Bullet(1, grid_width, grid_height,
+                                          (screen_width / grid_width),
+                                          (screen_height / grid_height), x, y));
+  }
+}
+void Game::SpawnEnemy() {
+  for (auto e : _enemies) {
+    if (!e->alive) {
+      int y = random_h(engine);
+      e->position_x = grid_width;
+      e->position_y = y;
+      e->alive = true;
+      break;
+    }
+  }
+}
+
+Bullet *Game::SpawnBullet() {
+  for (auto b : _enemyBullets) {
+    if (!b->alive) {
+      return b;
+    }
+  }
+  return nullptr;
+}

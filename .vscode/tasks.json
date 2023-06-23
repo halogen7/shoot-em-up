@@ -1,0 +1,32 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "C/C++: g++.exe build active file",
+			"command": "C:\\msys64\\mingw64\\bin\\g++.exe",
+			"args": [
+				"-g",
+				"${fileDirname}\\*.cpp",
+				"-o",
+				"${fileDirname}\\${fileBasenameNoExtension}.exe",
+				"-IG:\\CodeProjects\\CppND-Capstone-Snake-Game\\SDL2-2.0.14\\include",
+				"-LG:\\CodeProjects\\CppND-Capstone-Snake-Game\\SDL2-2.0.14\\lib\\x64",
+				"-lSDL2main",
+				"-lSDL2",
+				"-mwindows",
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "compiler: C:\\msys64\\mingw64\\bin\\g++.exe"
+		}
+	]
+}
